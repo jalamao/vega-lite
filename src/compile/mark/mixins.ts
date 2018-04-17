@@ -1,9 +1,10 @@
 import {isArray} from 'vega-util';
-import {NONPOSITION_SCALE_CHANNELS} from '../../channel';
+import {NONPOSITION_SCALE_CHANNELS, PositionScaleChannel} from '../../channel';
 import {ChannelDef, FieldDef, getFieldDef, isConditionalSelection, isValueDef} from '../../fielddef';
 import * as log from '../../log';
 import {MarkDef} from '../../mark';
 import {expression} from '../../predicate';
+import {hasContinuousDomain} from '../../scale';
 import {contains} from '../../util';
 import {VG_MARK_CONFIGS, VgEncodeEntry, VgValueRef} from '../../vega.schema';
 import {getMarkConfig} from '../common';
@@ -115,6 +116,35 @@ export function valueIfDefined(prop: string, value: string | number | boolean): 
     return {[prop]: {value: value}};
   }
   return undefined;
+}
+
+function validPredicate(vgRef: string) {
+  return `${vgRef} !== null && !isNaN(${vgRef})`;
+}
+
+export function defined(model: UnitModel): VgEncodeEntry {
+  if (model.config.invalidValues === 'filter') {
+    const fields = ['x', 'y'].map((channel: PositionScaleChannel) => {
+        const scaleComponent = model.getScaleComponent(channel);
+        if (scaleComponent) {
+          const scaleType = scaleComponent.get('type');
+
+          // Discrete domain scales can handle invalid values, but continuous scales can't.
+          if (hasContinuousDomain(scaleType)) {
+            return model.vgField(channel, {expr: 'datum'});
+          }
+        }
+        return undefined;
+      })
+      .filter(field => !!field)
+      .map(validPredicate);
+
+    return {
+      defined: {signal: fields.join(' && ')}
+    };
+  }
+
+  return {};
 }
 
 /**
