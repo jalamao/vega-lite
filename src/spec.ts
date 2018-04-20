@@ -502,16 +502,7 @@ function normalizeNonFacetUnit(
     }
 
     if (isPathMark(mark)) {
-      const markDef: MarkDef = isMarkDef(spec.mark) ?
-        spec.mark as MarkDef : // must be MarkDef, not CompositeMarkDef
-        {type: mark};
-
-      const pointOverlay = getPointOverlay(markDef, config[mark], encoding);
-      const lineOverlay = mark === 'area' && getLineOverlay(markDef, config[mark]);
-
-      if (pointOverlay || lineOverlay) {
-        return normalizeOverlay(spec, pointOverlay, lineOverlay, config);
-      }
+      return normalizePathOverlay(spec, config);
     }
 
     return spec; // Nothing to normalize
@@ -547,21 +538,31 @@ function dropLineAndPoint(markDef: MarkDef): MarkDef | Mark {
   return keys(mark).length > 1 ? mark : mark.type;
 }
 
-function normalizeOverlay(spec: NormalizedUnitSpec, pointOverlay: MarkProperties, lineOverlay: MarkProperties, config: Config): NormalizedLayerSpec {
+function normalizePathOverlay(spec: NormalizedUnitSpec, config: Config): NormalizedLayerSpec | NormalizedUnitSpec {
+
   // _ is used to denote a dropped property of the unit spec
   // which should not be carried over to the layer spec
-  const {selection, projection, encoding, mark: oldMark, ...outerSpec} = spec;
+  const {selection, projection, encoding, mark, ...outerSpec} = spec;
+  const markDef: MarkDef = isMarkDef(mark) ? mark: {type: mark};
 
-  // Do not include point / line overlay in the normalize spec
-  const mark = isMarkDef(oldMark) ? dropLineAndPoint(oldMark) : oldMark;
+  const pointOverlay = getPointOverlay(markDef, config[markDef.type], encoding);
+  const lineOverlay = mark === 'area' && getLineOverlay(markDef, config[markDef.type]);
 
-  const layer: NormalizedUnitSpec[] = [{mark, encoding}];
+  if (!pointOverlay && !lineOverlay) {
+    return spec;
+  }
+
+  const layer: NormalizedUnitSpec[] = [{
+    // Do not include point / line overlay in the normalize spec
+    mark: isMarkDef(mark) ? dropLineAndPoint(mark) : mark,
+    encoding
+  }];
 
   // FIXME: disable tooltip for the line layer if tooltip is not group-by field.
   // FIXME: determine rules for applying selections.
 
   // Need to copy stack config to overlayed layer
-  const stackProps = stack(mark, encoding, config ? config.stack : undefined);
+  const stackProps = stack(markDef, encoding, config ? config.stack : undefined);
 
   let overlayEncoding = encoding;
   if (stackProps) {
